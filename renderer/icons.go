@@ -52,7 +52,7 @@ func renderFolderIcon(x, y, size float64, color string, filled bool) string {
     <path d="M0,%f L0,%f L%f,%f L%f,0 L%f,0 L%f,%f L0,%f Z"
           fill="%s" stroke="%s" stroke-width="1"/>`,
 		x, y,
-		tabH, h, w, h, w, tabW, tabW+2, tabH, tabH,
+		tabH, h, w, h, w, tabW, tabW, tabH, tabH,
 		fillColor, color)
 
 	if !filled {
