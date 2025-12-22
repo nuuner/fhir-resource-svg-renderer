@@ -32,6 +32,7 @@ go.work
 
 # Output files
 *.svg
+!example_output.svg
 
 # Examples directory
 /examples/
