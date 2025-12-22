@@ -1,12 +1,15 @@
 package handlers
 
 import (
+	"bytes"
 	_ "embed"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
-	"net/url"
 
+	"github.com/andybalholm/brotli"
 	"github.com/gin-gonic/gin"
 
 	"fhir_renderer/models"
@@ -27,6 +30,29 @@ func validateResource(resource *models.ResourceDefinition) error {
 	return nil
 }
 
+// compressBrotliBase64URL compresses JSON bytes to Brotli and encodes as Base64URL
+func compressBrotliBase64URL(jsonBytes []byte) (string, error) {
+	var buf bytes.Buffer
+	w := brotli.NewWriterLevel(&buf, brotli.BestCompression)
+	if _, err := w.Write(jsonBytes); err != nil {
+		return "", err
+	}
+	if err := w.Close(); err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(buf.Bytes()), nil
+}
+
+// decompressBrotliBase64URL decodes Base64URL and decompresses Brotli
+func decompressBrotliBase64URL(encoded string) ([]byte, error) {
+	compressed, err := base64.RawURLEncoding.DecodeString(encoded)
+	if err != nil {
+		return nil, err
+	}
+	r := brotli.NewReader(bytes.NewReader(compressed))
+	return io.ReadAll(r)
+}
+
 // renderAndRespond renders the resource to SVG and writes the response
 func renderAndRespond(c *gin.Context, resource *models.ResourceDefinition) {
 	config := renderer.DefaultConfig()
@@ -38,28 +64,28 @@ func renderAndRespond(c *gin.Context, resource *models.ResourceDefinition) {
 }
 
 // RenderHandler handles the /render endpoint
-// GET /render?resource={url-encoded-json}
+// GET /render?resource={brotli-base64url-json}
 func RenderHandler(c *gin.Context) {
 	resourceParam := c.Query("resource")
 	if resourceParam == "" {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": "Missing 'resource' query parameter",
-			"usage": "GET /render?resource={url-encoded-json}",
+			"usage": "GET /render?resource={brotli-base64url-json}",
 		})
 		return
 	}
 
-	decodedJSON, err := url.QueryUnescape(resourceParam)
+	decodedJSON, err := decompressBrotliBase64URL(resourceParam)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":   "Invalid URL encoding",
+			"error":   "Invalid encoding (expected Brotli + Base64URL)",
 			"details": err.Error(),
 		})
 		return
 	}
 
 	var resource models.ResourceDefinition
-	if err := json.Unmarshal([]byte(decodedJSON), &resource); err != nil {
+	if err := json.Unmarshal(decodedJSON, &resource); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error":   "Invalid JSON",
 			"details": err.Error(),
@@ -110,6 +136,50 @@ func ExampleHandler(c *gin.Context) {
 	c.String(http.StatusOK, string(exampleJSON))
 }
 
+// CompressHandler compresses JSON to Brotli+Base64URL
+// POST /compress with JSON body → returns {"compressed": "..."}
+func CompressHandler(c *gin.Context) {
+	body, err := io.ReadAll(c.Request.Body)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to read body"})
+		return
+	}
+
+	if !json.Valid(body) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid JSON"})
+		return
+	}
+
+	compressed, err := compressBrotliBase64URL(body)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Compression failed"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"compressed": compressed})
+}
+
+// DecompressHandler decompresses Brotli+Base64URL to JSON
+// POST /decompress with {"data": "compressed-string"} → returns JSON
+func DecompressHandler(c *gin.Context) {
+	var req struct {
+		Data string `json:"data"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
+		return
+	}
+
+	decompressed, err := decompressBrotliBase64URL(req.Data)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Decompression failed", "details": err.Error()})
+		return
+	}
+
+	c.Header("Content-Type", "application/json")
+	c.String(http.StatusOK, string(decompressed))
+}
+
 // HelpHandler returns API documentation in markdown format
 func HelpHandler(c *gin.Context) {
 	helpText := `# FHIR Renderer API
@@ -123,8 +193,10 @@ Renders FHIR ResourceDefinition structures as SVG diagrams.
 | GET | /health | Health check → {"status":"ok"} |
 | GET | /help | This documentation |
 | GET | /example | Example ResourceDefinition JSON |
-| GET | /render?resource={json} | Render URL-encoded JSON to SVG |
+| GET | /render?resource={compressed} | Render Brotli+Base64URL compressed JSON to SVG |
 | POST | /render | Render JSON body to SVG |
+| POST | /compress | Compress JSON → {"compressed": "..."} |
+| POST | /decompress | Decompress {"data": "..."} → JSON |
 
 ## JSON Schema
 
@@ -209,16 +281,32 @@ Renders FHIR ResourceDefinition structures as SVG diagrams.
 
 ## Examples
 
-### GET Request
-` + "```" + `
-GET /render?resource=%7B%22name%22%3A%22Patient%22%2C%22type%22%3A%22DomainResource%22%7D
+### Compress JSON
+` + "```bash" + `
+curl -X POST http://localhost:8080/compress \
+  -H "Content-Type: application/json" \
+  -d '{"name":"Patient","type":"DomainResource"}'
+# Returns: {"compressed":"G8gBgJOgxIm..."}
 ` + "```" + `
 
-### POST Request
+### GET Request (with compressed data)
+` + "```" + `
+GET /render?resource=G8gBgJOgxIm...
+` + "```" + `
+
+### POST Request (raw JSON)
 ` + "```bash" + `
 curl -X POST http://localhost:8080/render \
   -H "Content-Type: application/json" \
   -d '{"name":"Patient","type":"DomainResource","elements":[{"name":"id","type":"id","cardinality":"0..1"}]}'
+` + "```" + `
+
+### Decompress
+` + "```bash" + `
+curl -X POST http://localhost:8080/decompress \
+  -H "Content-Type: application/json" \
+  -d '{"data":"G8gBgJOgxIm..."}'
+# Returns: {"name":"Patient","type":"DomainResource"}
 ` + "```" + `
 
 ### Minimal Valid JSON
@@ -237,10 +325,18 @@ curl -X POST http://localhost:8080/render \
 |------|-------|
 | 400 | Missing 'resource' param, invalid JSON, missing 'name'/'type' |
 
+## URL Compression
+
+The GET /render endpoint uses Brotli compression + Base64URL encoding for ~60-70% size reduction.
+
+**Format:** Brotli compress → Base64URL encode (no padding)
+
+Use the /compress endpoint to create compressed strings, or use the interactive editor.
+
 ## Notes
 
-- GET: URL-encode the JSON (use encodeURIComponent or similar)
-- POST: Send raw JSON with Content-Type: application/json
+- GET /render: Requires Brotli+Base64URL compressed JSON (use /compress or the editor)
+- POST /render: Send raw JSON with Content-Type: application/json
 - CORS enabled (Access-Control-Allow-Origin: *)
 - Responses cached 1 hour (Cache-Control: public, max-age=3600)
 `

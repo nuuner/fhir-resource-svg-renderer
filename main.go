@@ -35,16 +35,20 @@ func main() {
 	router.POST("/render", handlers.RenderPOSTHandler)
 	router.GET("/example", handlers.ExampleHandler)
 	router.GET("/editor", handlers.EditorHandler)
+	router.POST("/compress", handlers.CompressHandler)
+	router.POST("/decompress", handlers.DecompressHandler)
 
 	// Start server
 	log.Printf("FHIR Renderer starting on port %s", port)
 	log.Printf("Endpoints:")
-	log.Printf("  GET  /health  - Health check")
-	log.Printf("  GET  /help    - API documentation (markdown)")
-	log.Printf("  GET  /render?resource={url-encoded-json}  - Render SVG from query param")
-	log.Printf("  POST /render  - Render SVG from JSON body")
-	log.Printf("  GET  /example - Get example JSON schema")
-	log.Printf("  GET  /editor  - Interactive editor page")
+	log.Printf("  GET  /health     - Health check")
+	log.Printf("  GET  /help       - API documentation (markdown)")
+	log.Printf("  GET  /render?resource={brotli-base64url}  - Render SVG from compressed query param")
+	log.Printf("  POST /render     - Render SVG from JSON body")
+	log.Printf("  GET  /example    - Get example JSON schema")
+	log.Printf("  GET  /editor     - Interactive editor page")
+	log.Printf("  POST /compress   - Compress JSON to Brotli+Base64URL")
+	log.Printf("  POST /decompress - Decompress Brotli+Base64URL to JSON")
 
 	if err := router.Run(":" + port); err != nil {
 		log.Fatalf("Failed to start server: %v", err)
