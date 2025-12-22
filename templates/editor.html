@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FHIR Renderer - Editor</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f5f5f5;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        .header {
+            background: #2c3e50;
+            color: white;
+            padding: 12px 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+        }
+        .header h1 {
+            font-size: 18px;
+            font-weight: 500;
+        }
+        .header-actions {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .status {
+            font-size: 13px;
+            color: #95a5a6;
+        }
+        .status.error {
+            color: #e74c3c;
+        }
+        .status.success {
+            color: #27ae60;
+        }
+        .btn {
+            background: #3498db;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 13px;
+            transition: background 0.2s;
+        }
+        .btn:hover {
+            background: #2980b9;
+        }
+        .btn:disabled {
+            background: #95a5a6;
+            cursor: not-allowed;
+        }
+        .btn-secondary {
+            background: #7f8c8d;
+        }
+        .btn-secondary:hover {
+            background: #6c7a7b;
+        }
+        .main {
+            flex: 1;
+            display: flex;
+            overflow: hidden;
+        }
+        .panel {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            min-width: 0;
+        }
+        .panel-header {
+            background: #ecf0f1;
+            padding: 8px 16px;
+            font-size: 13px;
+            font-weight: 500;
+            color: #7f8c8d;
+            border-bottom: 1px solid #ddd;
+        }
+        .panel-content {
+            flex: 1;
+            overflow: auto;
+        }
+        .editor-panel .panel-content {
+            padding: 0;
+            overflow: hidden;
+        }
+        #jsonInput {
+            width: 100%;
+            height: 100%;
+            border: none;
+            padding: 16px;
+            font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
+            font-size: 13px;
+            line-height: 1.5;
+            resize: none;
+            outline: none;
+        }
+        .preview-panel {
+            border-left: 1px solid #ddd;
+            background: white;
+        }
+        .preview-panel .panel-content {
+            padding: 16px;
+            display: flex;
+            align-items: flex-start;
+            justify-content: center;
+            background: #fafafa;
+        }
+        #svgPreview {
+            max-width: 100%;
+            overflow: auto;
+        }
+        #svgPreview img {
+            max-width: 100%;
+            height: auto;
+        }
+        .error-message {
+            color: #e74c3c;
+            padding: 20px;
+            font-size: 14px;
+        }
+        .loading {
+            color: #7f8c8d;
+            padding: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>FHIR Resource Renderer</h1>
+        <div class="header-actions">
+            <span id="status" class="status"></span>
+            <button id="loadExample" class="btn btn-secondary">Load Example</button>
+            <button id="copyLink" class="btn" disabled>Copy SVG Link</button>
+        </div>
+    </div>
+    <div class="main">
+        <div class="panel editor-panel">
+            <div class="panel-header">JSON Input</div>
+            <div class="panel-content">
+                <textarea id="jsonInput" spellcheck="false" placeholder="Enter your FHIR ResourceDefinition JSON here..."></textarea>
+            </div>
+        </div>
+        <div class="panel preview-panel">
+            <div class="panel-header">SVG Preview</div>
+            <div class="panel-content">
+                <div id="svgPreview">
+                    <div class="loading">Enter JSON to see preview...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const jsonInput = document.getElementById('jsonInput');
+        const svgPreview = document.getElementById('svgPreview');
+        const copyLinkBtn = document.getElementById('copyLink');
+        const loadExampleBtn = document.getElementById('loadExample');
+        const statusEl = document.getElementById('status');
+
+        let debounceTimer;
+        let currentJson = '';
+
+        function setStatus(message, type = '') {
+            statusEl.textContent = message;
+            statusEl.className = 'status ' + type;
+        }
+
+        function debounce(func, wait) {
+            return function(...args) {
+                clearTimeout(debounceTimer);
+                debounceTimer = setTimeout(() => func.apply(this, args), wait);
+            };
+        }
+
+        async function renderPreview() {
+            const json = jsonInput.value.trim();
+
+            if (!json) {
+                svgPreview.innerHTML = '<div class="loading">Enter JSON to see preview...</div>';
+                copyLinkBtn.disabled = true;
+                setStatus('');
+                return;
+            }
+
+            try {
+                JSON.parse(json);
+            } catch (e) {
+                svgPreview.innerHTML = '<div class="error-message">Invalid JSON: ' + e.message + '</div>';
+                copyLinkBtn.disabled = true;
+                setStatus('Invalid JSON', 'error');
+                return;
+            }
+
+            setStatus('Rendering...', '');
+            svgPreview.innerHTML = '<div class="loading">Loading...</div>';
+
+            try {
+                const response = await fetch('/render', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: json
+                });
+
+                if (!response.ok) {
+                    const error = await response.text();
+                    throw new Error(error);
+                }
+
+                const svg = await response.text();
+                svgPreview.innerHTML = svg;
+                currentJson = json;
+                copyLinkBtn.disabled = false;
+                setStatus('Rendered', 'success');
+            } catch (e) {
+                svgPreview.innerHTML = '<div class="error-message">Error: ' + e.message + '</div>';
+                copyLinkBtn.disabled = true;
+                setStatus('Render failed', 'error');
+            }
+        }
+
+        const debouncedRender = debounce(renderPreview, 300);
+
+        jsonInput.addEventListener('input', debouncedRender);
+
+        copyLinkBtn.addEventListener('click', async () => {
+            if (!currentJson) return;
+
+            const encoded = encodeURIComponent(currentJson);
+            const url = window.location.origin + '/render?resource=' + encoded;
+
+            try {
+                await navigator.clipboard.writeText(url);
+                const originalText = copyLinkBtn.textContent;
+                copyLinkBtn.textContent = 'Copied!';
+                setTimeout(() => {
+                    copyLinkBtn.textContent = originalText;
+                }, 2000);
+            } catch (e) {
+                alert('Failed to copy: ' + e.message);
+            }
+        });
+
+        loadExampleBtn.addEventListener('click', async () => {
+            try {
+                const response = await fetch('/example');
+                const json = await response.json();
+                jsonInput.value = JSON.stringify(json, null, 2);
+                renderPreview();
+            } catch (e) {
+                alert('Failed to load example: ' + e.message);
+            }
+        });
+    </script>
+</body>
+</html>

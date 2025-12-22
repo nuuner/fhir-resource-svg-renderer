@@ -231,7 +231,7 @@
         {
           "name": "attendance-status",
           "url": "https://nijz.si/rdsp/fhir/StructureDefinition/participant-attendance-status",
-          "type": "code",
+          "type": "Extension",
           "cardinality": "0..1",
           "description": "Extension for clinical workflow: arrived, noshow, fulfilled"
         }

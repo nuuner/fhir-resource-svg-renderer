@@ -19,15 +19,22 @@ func main() {
 	// Create gin router
 	router := gin.Default()
 
+	// Load HTML templates
+	router.LoadHTMLGlob("templates/*")
+
 	// Enable CORS
 	router.Use(corsMiddleware())
 
 	// Routes
+	router.GET("/", func(c *gin.Context) {
+		c.Redirect(302, "/editor")
+	})
 	router.GET("/health", handlers.HealthHandler)
 	router.GET("/help", handlers.HelpHandler)
 	router.GET("/render", handlers.RenderHandler)
 	router.POST("/render", handlers.RenderPOSTHandler)
 	router.GET("/example", handlers.ExampleHandler)
+	router.GET("/editor", handlers.EditorHandler)
 
 	// Start server
 	log.Printf("FHIR Renderer starting on port %s", port)
@@ -37,6 +44,7 @@ func main() {
 	log.Printf("  GET  /render?resource={url-encoded-json}  - Render SVG from query param")
 	log.Printf("  POST /render  - Render SVG from JSON body")
 	log.Printf("  GET  /example - Get example JSON schema")
+	log.Printf("  GET  /editor  - Interactive editor page")
 
 	if err := router.Run(":" + port); err != nil {
 		log.Fatalf("Failed to start server: %v", err)
