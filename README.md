@@ -2,7 +2,7 @@
 
 Go web service that renders FHIR ResourceDefinition structures as SVG diagrams.
 
-![Example output](example_output.svg)
+![Example output](example.svg)
 
 ## Usage
 
