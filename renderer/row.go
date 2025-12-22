@@ -59,7 +59,7 @@ func renderDataRowWrapped(row RowData, config SVGConfig, y, totalWidth float64) 
 
 	x := config.Padding
 	baseTextY := y + RowTopMargin + config.FontSize
-	firstLineCenterY := y + RowTopMargin + config.FontSize/2
+	firstLineCenterY := y + RowTopMargin + config.FontSize/2 + IconLineVerticalOffset
 
 	sb.WriteString(renderTreeAndIcon(row, x, y, firstLineCenterY, config))
 	sb.WriteString(renderNameColumn(row, x, baseTextY, config))

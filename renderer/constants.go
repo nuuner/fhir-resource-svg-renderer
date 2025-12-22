@@ -52,6 +52,9 @@ const (
 const (
 	// TreeHorizontalGap is gap between horizontal tree line and icon
 	TreeHorizontalGap = 2.0
+
+	// IconLineVerticalOffset is the vertical offset for icons and horizontal tree lines
+	IconLineVerticalOffset = 2.0
 )
 
 // SVG output constants
