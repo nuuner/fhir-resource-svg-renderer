@@ -61,8 +61,9 @@ func decompressBrotliBase64URL(encoded string) ([]byte, error) {
 }
 
 // renderAndRespond renders the resource to SVG and writes the response
-func renderAndRespond(c *gin.Context, resource *models.ResourceDefinition) {
+func renderAndRespond(c *gin.Context, resource *models.ResourceDefinition, compressedResource string) {
 	config := renderer.DefaultConfig()
+	config.CompressedResource = compressedResource
 	svg := renderer.Render(resource, config)
 
 	c.Header("Content-Type", "image/svg+xml")
@@ -105,15 +106,20 @@ func RenderHandler(c *gin.Context) {
 		return
 	}
 
-	renderAndRespond(c, &resource)
+	renderAndRespond(c, &resource, resourceParam)
 }
 
 // RenderPOSTHandler handles POST requests with JSON body
 // POST /render with JSON body
 func RenderPOSTHandler(c *gin.Context) {
-	var resource models.ResourceDefinition
+	body, err := io.ReadAll(c.Request.Body)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to read body"})
+		return
+	}
 
-	if err := c.ShouldBindJSON(&resource); err != nil {
+	var resource models.ResourceDefinition
+	if err := json.Unmarshal(body, &resource); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error":   "Invalid JSON body",
 			"details": err.Error(),
@@ -126,7 +132,15 @@ func RenderPOSTHandler(c *gin.Context) {
 		return
 	}
 
-	renderAndRespond(c, &resource)
+	// Compress the JSON for the editor link
+	compressedResource, err := compressBrotliBase64URL(body)
+	if err != nil {
+		// If compression fails, render without the edit link
+		renderAndRespond(c, &resource, "")
+		return
+	}
+
+	renderAndRespond(c, &resource, compressedResource)
 }
 
 // HealthHandler returns health status

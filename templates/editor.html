@@ -400,6 +400,29 @@
                 importDialog.style.display = 'none';
             }
         });
+
+        // Check for resource URL parameter on page load
+        async function loadFromURLParam() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const resourceParam = urlParams.get('resource');
+            if (resourceParam) {
+                try {
+                    setStatus('Loading resource...', '');
+                    const json = await decompressJSON(resourceParam);
+                    const parsed = JSON.parse(json);
+                    jsonInput.value = JSON.stringify(parsed, null, 2);
+                    // Clear the URL parameter to avoid reloading on refresh
+                    window.history.replaceState({}, document.title, window.location.pathname);
+                    renderPreview();
+                    setStatus('Resource loaded', 'success');
+                } catch (e) {
+                    setStatus('Failed to load resource: ' + e.message, 'error');
+                }
+            }
+        }
+
+        // Load from URL parameter on page load
+        loadFromURLParam();
     </script>
 </body>
 </html>

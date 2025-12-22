@@ -10,6 +10,9 @@ const (
 	MinNameColWidth = 180.0
 	MaxNameColWidth = 300.0
 
+	// Footer
+	FooterHeight = 24.0
+
 	// Labels
 	UnusedElementLabel = "Not used"
 )
@@ -47,6 +50,9 @@ type SVGConfig struct {
 
 	// Text measurer (initialized during render)
 	textMeasurer *TextMeasurer
+
+	// CompressedResource is the Brotli+Base64URL encoded resource for footer links
+	CompressedResource string
 }
 
 // DefaultConfig returns sensible default configuration
