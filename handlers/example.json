@@ -1,0 +1,248 @@
+{
+  "resourceType": "ResourceDefinition",
+  "name": "Appointment",
+  "flags": ["TU"],
+  "type": "DomainResource",
+  "description": "A booking of a healthcare event among patient(s), practitioner(s), related person(s) and/or device(s) for a specific date/time",
+  "elements": [
+    {
+      "name": "identifier",
+      "flags": ["S"],
+      "cardinality": "0..*",
+      "type": "Identifier",
+      "typeRef": "https://hl7.org/fhir/R4B/datatypes.html#Identifier",
+      "description": "External identifiers for this element",
+      "usage": "used",
+      "notes": "Also used as HIS identifier"
+    },
+    {
+      "name": "status",
+      "flags": ["?!", "S"],
+      "cardinality": "1..1",
+      "type": "code",
+      "description": "Appointment status",
+      "usage": "used",
+      "notes": "Only booked and cancelled are used at the appointment level",
+      "binding": {
+        "strength": "required",
+        "valueSet": "booked | cancelled"
+      }
+    },
+    {
+      "name": "cancelationReason",
+      "flags": ["S"],
+      "cardinality": "0..1",
+      "type": "CodeableConcept",
+      "description": "Coded reason for appointment cancellation",
+      "usage": "optional",
+      "notes": "References AppointmentCancellationReason"
+    },
+    {
+      "name": "serviceCategory",
+      "flags": ["S"],
+      "cardinality": "0..*",
+      "type": "CodeableConcept",
+      "typeRef": "https://hl7.org/fhir/R4B/valueset-service-category.html",
+      "description": "Broad categorization of the service to be performed",
+      "usage": "used",
+      "notes": "Type of care - also used in Encounter"
+    },
+    {
+      "name": "serviceType",
+      "flags": ["S"],
+      "cardinality": "0..*",
+      "type": "CodeableConcept",
+      "description": "Specific service to be performed during this appointment",
+      "usage": "used",
+      "notes": "VZS - https://terminology.ih.ezdrav.si/terminology/rest/v1/fhir"
+    },
+    {
+      "name": "specialty",
+      "flags": ["S"],
+      "cardinality": "0..*",
+      "type": "CodeableConcept",
+      "description": "Specialty of the practitioner",
+      "usage": "used",
+      "notes": "VZD"
+    },
+    {
+      "name": "appointmentType",
+      "flags": ["S"],
+      "cardinality": "0..1",
+      "type": "CodeableConcept",
+      "typeRef": "https://terminology.hl7.org/3.1.0/CodeSystem-v2-0276.html",
+      "description": "Type of appointment or patient",
+      "usage": "todo",
+      "notes": "TODO: Consider repurposing for other uses"
+    },
+    {
+      "name": "reasonCode",
+      "flags": ["S"],
+      "cardinality": "0..*",
+      "type": "CodeableConcept",
+      "description": "Coded reason for scheduling this appointment",
+      "usage": "not-used"
+    },
+    {
+      "name": "reasonReference",
+      "cardinality": "0..*",
+      "type": "Reference(Condition | Procedure | Observation | ImmunizationRecommendation)",
+      "description": "Reason for the appointment (reference)",
+      "usage": "not-used"
+    },
+    {
+      "name": "priority",
+      "cardinality": "0..1",
+      "type": "unsignedInt",
+      "description": "Appointment priority",
+      "usage": "used",
+      "notes": "Used for queue ordering"
+    },
+    {
+      "name": "description",
+      "cardinality": "0..1",
+      "type": "string",
+      "description": "Shown in the subject line of a meeting request",
+      "usage": "used",
+      "notes": "Used for notes"
+    },
+    {
+      "name": "supportingInformation",
+      "cardinality": "0..*",
+      "type": "Reference(Any)",
+      "description": "Additional information to support the appointment",
+      "usage": "not-used"
+    },
+    {
+      "name": "start",
+      "flags": ["S"],
+      "cardinality": "0..1",
+      "type": "instant",
+      "description": "When appointment should start",
+      "usage": "used"
+    },
+    {
+      "name": "end",
+      "flags": ["S"],
+      "cardinality": "0..1",
+      "type": "instant",
+      "description": "When appointment should end",
+      "usage": "used"
+    },
+    {
+      "name": "minutesDuration",
+      "cardinality": "0..1",
+      "type": "positiveInt",
+      "description": "Can be less than start/end (e.g., estimate)",
+      "usage": "todo",
+      "notes": "TODO: Determine if unused or calculated"
+    },
+    {
+      "name": "slot",
+      "cardinality": "0..*",
+      "type": "Reference(Slot)",
+      "description": "Time slots that this appointment is filling",
+      "usage": "not-used"
+    },
+    {
+      "name": "created",
+      "cardinality": "0..1",
+      "type": "dateTime",
+      "description": "Date this appointment was initially created",
+      "usage": "used"
+    },
+    {
+      "name": "comment",
+      "cardinality": "0..1",
+      "type": "string",
+      "description": "Additional comments",
+      "usage": "not-used"
+    },
+    {
+      "name": "patientInstruction",
+      "cardinality": "0..1",
+      "type": "string",
+      "description": "Detailed information and instructions for patient",
+      "usage": "used",
+      "notes": "Text displayed to patient"
+    },
+    {
+      "name": "basedOn",
+      "cardinality": "0..*",
+      "type": "Reference(ServiceRequest)",
+      "description": "Service request this appointment is allocated to",
+      "usage": "todo",
+      "notes": "TODO: Consider creating ServiceRequest for each visit request"
+    },
+    {
+      "name": "participant",
+      "flags": ["I"],
+      "cardinality": "1..*",
+      "type": "BackboneElement",
+      "description": "Participants involved in appointment",
+      "usage": "used",
+      "notes": "Care team, all patients, and locations",
+      "elements": [
+        {
+          "name": "type",
+          "flags": ["S"],
+          "cardinality": "0..*",
+          "type": "CodeableConcept",
+          "description": "Role of participant in the appointment",
+          "usage": "used",
+          "notes": "ADM (admitter) for care team, ATND (attender) for patients"
+        },
+        {
+          "name": "actor",
+          "flags": ["S"],
+          "cardinality": "0..1",
+          "type": "Reference(Patient | Practitioner | PractitionerRole | RelatedPerson | Device | HealthcareService | Location)",
+          "description": "Person, location/healthcare service, or device",
+          "usage": "used",
+          "notes": "Requires reference to CareTeam"
+        },
+        {
+          "name": "required",
+          "flags": ["S"],
+          "cardinality": "0..1",
+          "type": "code",
+          "description": "required | optional | information-only",
+          "usage": "used",
+          "notes": "Always required"
+        },
+        {
+          "name": "status",
+          "flags": ["S"],
+          "cardinality": "1..1",
+          "type": "code",
+          "description": "accepted | declined | tentative | needs-action",
+          "usage": "used",
+          "notes": "Used for patient confirmation"
+        },
+        {
+          "name": "period",
+          "cardinality": "0..1",
+          "type": "Period",
+          "description": "Participation period of the actor",
+          "usage": "not-used"
+        }
+      ],
+      "extensions": [
+        {
+          "name": "attendance-status",
+          "url": "https://nijz.si/rdsp/fhir/StructureDefinition/participant-attendance-status",
+          "type": "code",
+          "cardinality": "0..1",
+          "description": "Extension for clinical workflow: arrived, noshow, fulfilled"
+        }
+      ]
+    },
+    {
+      "name": "requestedPeriod",
+      "cardinality": "0..*",
+      "type": "Period",
+      "description": "Potential date/time intervals requested for appointment allocation",
+      "usage": "not-used"
+    }
+  ]
+}
