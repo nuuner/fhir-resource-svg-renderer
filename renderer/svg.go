@@ -7,9 +7,22 @@ import (
 	"fhir_renderer/models"
 )
 
+// ColumnWidths holds the calculated widths for each column
+type ColumnWidths struct {
+	Name        float64
+	Flags       float64
+	Cardinality float64
+	Type        float64
+	Description float64
+}
+
+// Total returns the sum of all column widths
+func (cw ColumnWidths) Total() float64 {
+	return cw.Name + cw.Flags + cw.Cardinality + cw.Type + cw.Description
+}
+
 // Render generates SVG for a resource definition
 func Render(resource *models.ResourceDefinition, config SVGConfig) string {
-	// Initialize text measurer
 	tm, err := NewTextMeasurer(config.FontSize)
 	if err != nil {
 		return renderFallback()
@@ -17,106 +30,162 @@ func Render(resource *models.ResourceDefinition, config SVGConfig) string {
 	defer tm.Close()
 	config.textMeasurer = tm
 
-	// Flatten the resource hierarchy
-	flatElements := resource.Flatten()
+	config.NameColWidth = calculateNameColumnWidth(resource, tm, config)
+	rows := prepareRows(resource.Flatten(), tm, config)
+	colWidths := ColumnWidths{
+		Name:        config.NameColWidth,
+		Flags:       config.FlagsColWidth,
+		Cardinality: config.CardinalityColWidth,
+		Type:        config.TypeColWidth,
+		Description: config.DescriptionColWidth,
+	}
 
-	// Calculate name column width based on actual content
+	totalHeight := calculateTotalHeight(rows, config)
+	return buildSVG(rows, colWidths, totalHeight, config)
+}
+
+// calculateNameColumnWidth determines the optimal name column width based on content
+func calculateNameColumnWidth(resource *models.ResourceDefinition, tm *TextMeasurer, config SVGConfig) float64 {
+	flatElements := resource.Flatten()
 	maxNameWidth := tm.MeasureString(resource.Name)
+
 	for _, fe := range flatElements {
 		indentWidth := float64(fe.Depth) * config.TreeStyle.IndentPx
-		nameWidth := indentWidth + config.IconSize + 12 + tm.MeasureString(fe.Element.Name)
+		nameWidth := indentWidth + config.IconSize + IconSpaceInMeasurement + tm.MeasureString(fe.Element.Name)
 		if nameWidth > maxNameWidth {
 			maxNameWidth = nameWidth
 		}
 	}
-	config.NameColWidth = maxNameWidth + config.Padding*2
-	if config.NameColWidth < MinNameColWidth {
-		config.NameColWidth = MinNameColWidth
-	}
-	if config.NameColWidth > MaxNameColWidth {
-		config.NameColWidth = MaxNameColWidth
-	}
 
-	// Pre-calculate row data with text wrapping
+	width := maxNameWidth + config.Padding*2
+	if width < MinNameColWidth {
+		width = MinNameColWidth
+	}
+	if width > MaxNameColWidth {
+		width = MaxNameColWidth
+	}
+	return width
+}
+
+// prepareRows creates RowData for each flattened element with text wrapping
+func prepareRows(flatElements []models.FlatElement, tm *TextMeasurer, config SVGConfig) []RowData {
 	rows := make([]RowData, len(flatElements))
-	totalContentHeight := 0.0
 
 	for i, fe := range flatElements {
-		row := RowData{
-			Element: fe,
-			IsRoot:  i == 0,
-			IsAlt:   i%2 == 1,
-		}
-
-		// Calculate available widths for each column (with buffer for font rendering differences)
-		nameIndent := float64(fe.Depth)*config.TreeStyle.IndentPx + config.IconSize + 8
-		availableNameWidth := config.NameColWidth - nameIndent - config.Padding - 15
-		availableTypeWidth := config.TypeColWidth - config.Padding*2 - 15
-		availableDescWidth := config.DescriptionColWidth - config.Padding*2 - 15
-
-		// Wrap text for each column
-		row.NameLines = []string{fe.Element.Name} // Name usually fits, just use single line
-		if tm.MeasureString(fe.Element.Name) > availableNameWidth {
-			row.NameLines = tm.WrapText(fe.Element.Name, availableNameWidth)
-		}
-
-		row.TypeLines = tm.WrapText(fe.Element.Type, availableTypeWidth)
-
-		// Build description text
-		descText := fe.Element.Description
-		isBold := false
-		if fe.Element.Usage == "not-used" {
-			if descText == "" {
-				descText = UnusedElementLabel
-			}
-		} else if fe.Element.Usage == "todo" {
-			isBold = true
-			if !strings.HasPrefix(descText, "TODO") {
-				descText = "TODO: " + descText
-			}
-		}
-		if fe.Element.Notes != "" && fe.Element.Usage != "not-used" {
-			if descText != "" {
-				descText += " - "
-			}
-			descText += fe.Element.Notes
-		}
-		// Bold text is ~10% wider, reduce available width accordingly
-		descWidth := availableDescWidth
-		if isBold {
-			descWidth = availableDescWidth * 0.90
-		}
-		row.DescLines = tm.WrapText(descText, descWidth)
-
-		// Calculate row height based on max lines
-		maxLines := len(row.NameLines)
-		if len(row.TypeLines) > maxLines {
-			maxLines = len(row.TypeLines)
-		}
-		if len(row.DescLines) > maxLines {
-			maxLines = len(row.DescLines)
-		}
-
-		// Row height: top margin + content + bottom margin
-		row.RowHeight = RowTopMargin + float64(maxLines)*config.LineHeight + RowBottomMargin
-		if row.RowHeight < config.MinRowHeight {
-			row.RowHeight = config.MinRowHeight
-		}
-
-		rows[i] = row
-		totalContentHeight += row.RowHeight
+		rows[i] = prepareRow(fe, i, tm, config)
 	}
 
-	// Calculate total dimensions
-	totalWidth := config.NameColWidth + config.FlagsColWidth + config.CardinalityColWidth +
-		config.TypeColWidth + config.DescriptionColWidth
-	totalHeight := config.TitleHeight + config.HeaderHeight + totalContentHeight + 2
+	return rows
+}
 
-	// Build SVG
+// prepareRow creates a single RowData with wrapped text and calculated height
+func prepareRow(fe models.FlatElement, index int, tm *TextMeasurer, config SVGConfig) RowData {
+	row := RowData{
+		Element: fe,
+		IsRoot:  index == 0,
+		IsAlt:   index%2 == 1,
+	}
+
+	// Calculate available widths for each column
+	nameIndent := float64(fe.Depth)*config.TreeStyle.IndentPx + config.IconSize + IconPaddingRight
+	availableNameWidth := config.NameColWidth - nameIndent - config.Padding - FontRenderingBuffer
+	availableTypeWidth := config.TypeColWidth - config.Padding*2 - FontRenderingBuffer
+	availableDescWidth := config.DescriptionColWidth - config.Padding*2 - FontRenderingBuffer
+
+	// Wrap name text
+	row.NameLines = []string{fe.Element.Name}
+	if tm.MeasureString(fe.Element.Name) > availableNameWidth {
+		row.NameLines = tm.WrapText(fe.Element.Name, availableNameWidth)
+	}
+
+	// Wrap type text
+	row.TypeLines = tm.WrapText(fe.Element.Type, availableTypeWidth)
+
+	// Build and wrap description text
+	descText, isBold := buildDescriptionText(fe)
+	descWidth := availableDescWidth
+	if isBold {
+		descWidth = availableDescWidth * BoldTextWidthFactor
+	}
+	row.DescLines = tm.WrapText(descText, descWidth)
+
+	// Calculate row height
+	row.RowHeight = calculateRowHeight(row, config)
+
+	return row
+}
+
+// buildDescriptionText constructs the description text and returns whether it should be bold
+func buildDescriptionText(fe models.FlatElement) (string, bool) {
+	descText := fe.Element.Description
+	isBold := false
+
+	if fe.Element.Usage == "not-used" {
+		if descText == "" {
+			descText = UnusedElementLabel
+		}
+	} else if fe.Element.Usage == "todo" {
+		isBold = true
+		if !strings.HasPrefix(descText, "TODO") {
+			descText = "TODO: " + descText
+		}
+	}
+
+	if fe.Element.Notes != "" && fe.Element.Usage != "not-used" {
+		if descText != "" {
+			descText += " - "
+		}
+		descText += fe.Element.Notes
+	}
+
+	return descText, isBold
+}
+
+// calculateRowHeight determines the height of a row based on its content
+func calculateRowHeight(row RowData, config SVGConfig) float64 {
+	maxLines := len(row.NameLines)
+	if len(row.TypeLines) > maxLines {
+		maxLines = len(row.TypeLines)
+	}
+	if len(row.DescLines) > maxLines {
+		maxLines = len(row.DescLines)
+	}
+
+	height := RowTopMargin + float64(maxLines)*config.LineHeight + RowBottomMargin
+	if height < config.MinRowHeight {
+		height = config.MinRowHeight
+	}
+	return height
+}
+
+// calculateTotalHeight computes the total SVG height
+func calculateTotalHeight(rows []RowData, config SVGConfig) float64 {
+	contentHeight := 0.0
+	for _, row := range rows {
+		contentHeight += row.RowHeight
+	}
+	return config.TitleHeight + config.HeaderHeight + contentHeight + SVGHeightPadding
+}
+
+// buildSVG constructs the complete SVG string
+func buildSVG(rows []RowData, colWidths ColumnWidths, totalHeight float64, config SVGConfig) string {
 	var sb strings.Builder
+	totalWidth := colWidths.Total()
 
-	// SVG header
-	sb.WriteString(fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
+	sb.WriteString(buildSVGHeader(totalWidth, totalHeight, config))
+	sb.WriteString(buildClipPaths(colWidths, totalHeight, config))
+	sb.WriteString("</defs>\n")
+	sb.WriteString(buildTitleBar(totalWidth, config))
+	sb.WriteString(renderHeaderRow(config, config.TitleHeight, totalWidth))
+	sb.WriteString(buildDataRows(rows, totalWidth, config))
+	sb.WriteString("</svg>")
+
+	return sb.String()
+}
+
+// buildSVGHeader creates the SVG header with styles
+func buildSVGHeader(totalWidth, totalHeight float64, config SVGConfig) string {
+	return fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"
      width="%.0f" height="%.0f" viewBox="0 0 %.0f %.0f">
 <defs>
@@ -137,51 +206,57 @@ func Render(resource *models.ResourceDefinition, config SVGConfig) string {
 		config.FontFamily, config.FontSize, config.NotUsedColor,
 		config.FontFamily, config.FontSize, config.TodoColor,
 		config.FontFamily, config.TextColor,
-		config.FontFamily, config.HeaderTextColor))
+		config.FontFamily, config.HeaderTextColor)
+}
 
-	// Add clipPath definitions for each column
+// buildClipPaths creates clip path definitions for each column
+func buildClipPaths(colWidths ColumnWidths, totalHeight float64, config SVGConfig) string {
+	var sb strings.Builder
+
 	colStarts := []float64{
 		0,
-		config.NameColWidth,
-		config.NameColWidth + config.FlagsColWidth,
-		config.NameColWidth + config.FlagsColWidth + config.CardinalityColWidth,
-		config.NameColWidth + config.FlagsColWidth + config.CardinalityColWidth + config.TypeColWidth,
+		colWidths.Name,
+		colWidths.Name + colWidths.Flags,
+		colWidths.Name + colWidths.Flags + colWidths.Cardinality,
+		colWidths.Name + colWidths.Flags + colWidths.Cardinality + colWidths.Type,
 	}
-	colWidths := []float64{
-		config.NameColWidth,
-		config.FlagsColWidth,
-		config.CardinalityColWidth,
-		config.TypeColWidth,
-		config.DescriptionColWidth,
+	widths := []float64{
+		colWidths.Name,
+		colWidths.Flags,
+		colWidths.Cardinality,
+		colWidths.Type,
+		colWidths.Description,
 	}
-	colNames := []string{"name", "flags", "card", "type", "desc"}
+	names := []string{"name", "flags", "card", "type", "desc"}
 
-	for i, name := range colNames {
+	for i, name := range names {
 		sb.WriteString(fmt.Sprintf(`    <clipPath id="clip-%s"><rect x="%.0f" y="0" width="%.0f" height="%.0f"/></clipPath>
 `,
-			name, colStarts[i], colWidths[i], totalHeight))
+			name, colStarts[i], widths[i], totalHeight))
 	}
-	sb.WriteString("</defs>\n")
 
-	// Title bar
-	sb.WriteString(fmt.Sprintf(`<rect x="0" y="0" width="%.0f" height="%.0f" fill="%s" stroke="%s"/>
+	return sb.String()
+}
+
+// buildTitleBar creates the title bar section
+func buildTitleBar(totalWidth float64, config SVGConfig) string {
+	return fmt.Sprintf(`<rect x="0" y="0" width="%.0f" height="%.0f" fill="%s" stroke="%s"/>
 <text x="%.0f" y="%.0f" class="title-text">Structure</text>
 `,
 		totalWidth, config.TitleHeight, config.HeaderBgColor, config.BorderColor,
-		config.Padding, config.TitleHeight/2+5))
+		config.Padding, config.TitleHeight/2+TitleVerticalOffset)
+}
 
-	// Column headers
-	headerY := config.TitleHeight
-	sb.WriteString(renderHeaderRow(config, headerY, totalWidth))
+// buildDataRows renders all data rows
+func buildDataRows(rows []RowData, totalWidth float64, config SVGConfig) string {
+	var sb strings.Builder
+	currentY := config.TitleHeight + config.HeaderHeight
 
-	// Data rows with variable heights
-	currentY := headerY + config.HeaderHeight
 	for _, row := range rows {
 		sb.WriteString(renderDataRowWrapped(row, config, currentY, totalWidth))
 		currentY += row.RowHeight
 	}
 
-	sb.WriteString("</svg>")
 	return sb.String()
 }
 

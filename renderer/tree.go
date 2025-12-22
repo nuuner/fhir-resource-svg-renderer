@@ -7,9 +7,9 @@ import (
 
 // TreeLineStyle contains styling parameters for tree lines
 type TreeLineStyle struct {
-	Color     string
-	Width     float64
-	IndentPx  float64 // Pixels per indent level
+	Color    string
+	Width    float64
+	IndentPx float64 // Pixels per indent level
 }
 
 // DefaultTreeStyle returns the default tree line styling
@@ -61,48 +61,10 @@ func RenderTreeLines(x, y, rowHeight, firstLineY float64, depth int, parentLasts
 	}
 
 	// Horizontal part (from connector to icon) - aligned with first line
-	horizontalEndX := x + float64(depth)*style.IndentPx - 2
+	horizontalEndX := x + float64(depth)*style.IndentPx - TreeHorizontalGap
 	sb.WriteString(fmt.Sprintf(
 		`<line x1="%f" y1="%f" x2="%f" y2="%f" stroke="%s" stroke-width="%f"/>`,
 		connectorX, firstLineY, horizontalEndX, firstLineY, style.Color, style.Width))
 
 	return sb.String()
-}
-
-// RenderTreeLinesForRows generates all tree lines for a list of rows
-// This function draws all vertical lines at once for better visual consistency
-// Note: This is a simplified version that uses row center for firstLineY
-func RenderTreeLinesForRows(rows []TreeRow, startX, startY, rowHeight float64, style TreeLineStyle) string {
-	if len(rows) == 0 {
-		return ""
-	}
-
-	var sb strings.Builder
-
-	for i, row := range rows {
-		y := startY + float64(i)*rowHeight
-		firstLineY := y + rowHeight/2 // Use row center as approximation
-		lines := RenderTreeLines(startX, y, rowHeight, firstLineY, row.Depth, row.ParentLasts, row.IsLast, style)
-		sb.WriteString(lines)
-	}
-
-	return sb.String()
-}
-
-// TreeRow contains the information needed to render tree lines for a single row
-type TreeRow struct {
-	Depth       int
-	ParentLasts []bool
-	IsLast      bool
-}
-
-// CalculateNameColumnWidth calculates the width needed for the Name column
-// based on maximum depth and element name lengths
-func CalculateNameColumnWidth(maxDepth int, maxNameLen int, style TreeLineStyle, iconSize, charWidth float64) float64 {
-	indentWidth := float64(maxDepth) * style.IndentPx
-	iconWidth := iconSize + 8 // icon + padding
-	textWidth := float64(maxNameLen) * charWidth
-	padding := 20.0 // left and right padding
-
-	return indentWidth + iconWidth + textWidth + padding
 }

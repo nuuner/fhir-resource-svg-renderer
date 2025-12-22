@@ -29,16 +29,16 @@ func renderFlags(flags []string, config SVGConfig) string {
 		}
 
 		if needsBox {
-			boxWidth := float64(len(displayFlag))*7 + 6
+			boxWidth := float64(len(displayFlag))*FlagCharWidth + FlagBoxPadding
 			sb.WriteString(fmt.Sprintf(`<rect x="%.0f" y="-8" width="%.0f" height="14" fill="none" stroke="%s" rx="2"/>`,
 				x, boxWidth, config.BorderColor))
 			sb.WriteString(fmt.Sprintf(`<text x="%.0f" y="2" class="flag-box">%s</text>`,
-				x+3, escapeXML(displayFlag)))
-			x += boxWidth + 4
+				x+FlagBoxTextOffset, escapeXML(displayFlag)))
+			x += boxWidth + FlagGap
 		} else {
 			sb.WriteString(fmt.Sprintf(`<text x="%.0f" y="2" class="flag-box">%s</text>`,
 				x, escapeXML(displayFlag)))
-			x += float64(len(displayFlag))*7 + 4
+			x += float64(len(displayFlag))*FlagCharWidth + FlagGap
 		}
 	}
 
